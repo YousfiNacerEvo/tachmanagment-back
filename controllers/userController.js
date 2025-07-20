@@ -12,6 +12,7 @@ async function createUser(req, res) {
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
+      email_confirm: true, // disables email confirmation
     });
     if (error || !data || !data.user) {
       console.log('[AddUser] Supabase error:', error);
@@ -36,4 +37,40 @@ async function createUser(req, res) {
   }
 }
 
-module.exports = { createUser }; 
+// GET /api/users/:id
+async function getUserById(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: 'User id is required.' });
+    }
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error || !data) {
+      return res.status(404).json({ message: error?.message || 'User not found.' });
+    }
+    return res.status(200).json(data);
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+}
+
+// GET /api/users/all
+async function getAllUsers(req, res) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, role');
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(200).json(data);
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+}
+
+module.exports = { createUser, getUserById, getAllUsers }; 
