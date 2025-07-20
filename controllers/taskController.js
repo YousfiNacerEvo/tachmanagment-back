@@ -1,4 +1,4 @@
-const { getAllTasks, getTasksByProject: getTasksByProjectService, addTask, updateTask: updateTaskService, deleteTask: deleteTaskService } = require('../services/taskService');
+const { getAllTasks, getTasksByProject: getTasksByProjectService, getTasksByProjectWithAssignees, addTask, updateTask: updateTaskService, deleteTask: deleteTaskService, getTasksByProjectAndUser } = require('../services/taskService');
 
 async function getTasks(req, res) {
   try {
@@ -12,7 +12,7 @@ async function getTasks(req, res) {
 async function getTasksByProject(req, res) {
   const { projectId } = req.params;
   try {
-    const tasks = await getTasksByProjectService(projectId);
+    const tasks = await getTasksByProjectWithAssignees(projectId);
     res.json(tasks);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch project tasks' });
@@ -21,20 +21,13 @@ async function getTasksByProject(req, res) {
 
 async function createTask(req, res) {
   console.log('Reçu pour création de tâche :', req.body);
-  const { title, status, deadline, priority, progress, project_id } = req.body;
+  const { title, status, deadline, priority, project_id, user_ids } = req.body;
   if (!title || !project_id) {
     console.log('Erreur : title ou project_id manquant');
     return res.status(400).json({ message: 'Title and project_id are required.' });
   }
   try {
-    const newTask = await addTask({ 
-      title, 
-      status: status || 'à faire', 
-      deadline, 
-      priority: priority || 'moyenne', 
-    
-      project_id 
-    });
+    const newTask = await addTask({ title, status: status || 'à faire', deadline, priority: priority || 'moyenne', project_id }, user_ids);
     console.log('Tâche créée avec succès :', newTask);
     res.status(201).json(newTask);
   } catch (err) {
@@ -45,8 +38,9 @@ async function createTask(req, res) {
 
 async function updateTask(req, res) {
   const { id } = req.params;
+  const { user_ids, ...updates } = req.body;
   try {
-    const updated = await updateTaskService(id, req.body);
+    const updated = await updateTaskService(id, updates, user_ids);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to update task' });
@@ -63,4 +57,16 @@ async function deleteTask(req, res) {
   }
 }
 
-module.exports = { getTasks, getTasksByProject, createTask, updateTask, deleteTask }; 
+// GET /api/tasks/project/:projectId/user/:userId
+async function getTasksByProjectAndUserController(req, res) {
+  const { projectId, userId } = req.params;
+  try {
+    if (!projectId || !userId) return res.status(400).json({ message: 'Project id and user id are required.' });
+    const tasks = await getTasksByProjectAndUser(projectId, userId);
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to fetch project tasks for user' });
+  }
+}
+
+module.exports = { getTasks, getTasksByProject, createTask, updateTask, deleteTask, getTasksByProjectAndUserController }; 
