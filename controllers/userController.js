@@ -8,6 +8,14 @@ async function createUser(req, res) {
       console.log('[AddUser] Missing fields', req.body);
       return res.status(400).json({ message: 'Missing required fields.' });
     }
+    
+    // Validate role
+    const validRoles = ['admin', 'member', 'guest'];
+    if (!validRoles.includes(role)) {
+      console.log('[AddUser] Invalid role:', role);
+      return res.status(400).json({ message: 'Invalid role. Must be one of: admin, member, guest.' });
+    }
+    
     // Create user in Supabase Auth (admin)
     const { data, error } = await supabase.auth.admin.createUser({
       email,
@@ -73,4 +81,27 @@ async function getAllUsers(req, res) {
   }
 }
 
-module.exports = { createUser, getUserById, getAllUsers }; 
+// DELETE /api/users/:id
+async function deleteUser(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: 'User id is required.' });
+    }
+    // Supprimer dans Supabase Auth
+    const { error: authError } = await supabase.auth.admin.deleteUser(id);
+    if (authError) {
+      return res.status(400).json({ message: authError.message || 'Failed to delete user from auth.' });
+    }
+    // Supprimer dans la table users
+    const { error: dbError } = await supabase.from('users').delete().eq('id', id);
+    if (dbError) {
+      return res.status(400).json({ message: dbError.message || 'Failed to delete user from database.' });
+    }
+    return res.status(200).json({ message: 'User deleted successfully.' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+}
+
+module.exports = { createUser, getUserById, getAllUsers, deleteUser }; 

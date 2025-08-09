@@ -3,13 +3,14 @@ require('dotenv').config();
 console.log('Starting application...');
 
 const express = require('express');
-console.log('Express loaded successfully');
+
 
 const cors = require('cors');
-console.log('CORS loaded successfully');
 
-console.log('Loading routes...');
+
+
 const projectRoutes = require('./routes/projectRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 console.log('Project routes loaded successfully');
 
 const taskRoutes = require('./routes/taskRoutes');
@@ -17,6 +18,9 @@ console.log('Task routes loaded successfully');
 
 const userRoutes = require('./routes/userRoutes');
 console.log('User routes loaded successfully');
+
+const groupRoutes = require('./routes/groupRoutes');
+console.log('Group routes loaded successfully');
 
 const app = express();
 console.log('Express app created successfully');
@@ -33,11 +37,26 @@ console.log('JSON middleware applied');
 app.use('/api/projects', projectRoutes);
 console.log('Project routes mounted');
 
+app.use('/api/reports', reportRoutes);
+console.log('Report routes mounted');
+
 app.use('/api/tasks', taskRoutes);
 console.log('Task routes mounted');
 
 app.use('/api/users', userRoutes);
 console.log('User routes mounted');
+
+app.use('/api/groups', groupRoutes);
+console.log('Group routes mounted');
+
+// Initialize notifications scheduler
+try {
+  const { initializeNotificationScheduler } = require('./services/notificationService');
+  initializeNotificationScheduler();
+  console.log('Notification scheduler initialized');
+} catch (err) {
+  console.error('Failed to initialize notification scheduler', err);
+}
 
 // Add a simple test route
 app.get('/', (req, res) => {
