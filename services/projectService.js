@@ -21,23 +21,44 @@ async function addProject(project, user_ids = []) {
   return data;
 }
 
+function isUUID(str) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
 async function updateProjectById(id, updates, user_ids) {
-  const { user_ids: ignore, ...projectData } = updates;
+  console.log('[updateProjectById] id:', id);
+  console.log('[updateProjectById] updates (raw):', updates);
+  console.log('[updateProjectById] user_ids reçus:', user_ids);
+  // Ignore user_ids AND group_ids AND id
+  const { user_ids: ignore1, group_ids: ignore2, id: ignore3, ...projectData } = updates;
+  console.log('[updateProjectById] projectData to update:', projectData);
   const { data, error } = await supabase.from('projects').update(projectData).eq('id', id).select().single();
-  if (error) throw new Error(error.message);
-  
+  console.log('[updateProjectById] update result:', { data, error });
+  if (error) {
+    console.error('[updateProjectById] Error updating project:', error);
+    throw new Error(error.message);
+  }
+
   // Update assignees if provided
   if (user_ids !== undefined) {
+    console.log('[updateProjectById] Incoming user_ids:', user_ids);
     // Remove all previous assignees
     await supabase.from('project_assignees').delete().eq('project_id', id);
-    // Insert new assignees
+    // Insert new assignees (UUID only)
     if (user_ids.length > 0) {
-      const assignees = user_ids.map(user_id => ({ project_id: id, user_id }));
-      const { error: assigneeError } = await supabase.from('project_assignees').insert(assignees);
-      if (assigneeError) throw new Error(assigneeError.message);
+      const validUserIds = user_ids.filter(isUUID);
+      console.log('[updateProjectById] Filtered validUserIds:', validUserIds);
+      const assignees = validUserIds.map(user_id => ({ project_id: id, user_id }));
+      console.log('[updateProjectById] Assignees to insert:', assignees);
+      const { data: assigneeData, error: assigneeError } = await supabase.from('project_assignees').insert(assignees);
+      console.log('[updateProjectById] assignee insert result:', { assigneeData, assigneeError });
+      if (assigneeError) {
+        console.error('[updateProjectById] Error inserting assignees:', assigneeError);
+        throw new Error(assigneeError.message);
+      }
     }
   }
-  
+
   return data;
 }
 
@@ -48,28 +69,19 @@ async function deleteProjectById(id) {
 }
 
 async function getProjectsByUser(userId) {
-  // Get projects where user is assigned
-  const { data: assignedProjects, error: assignedError } = await supabase
-    .from('project_assignees')
-    .select('project_id')
-    .eq('user_id', userId);
+  console.log('getProjectsByUser called with userId:', userId);
   
-  if (assignedError) throw new Error(assignedError.message);
+  // Version de test : récupérer tous les projets
+  const { data: allProjects, error: projectsError } = await supabase
+    .from('projects')
+    .select('*')
+    .order('start', { ascending: true });
   
-  if (assignedProjects.length > 0) {
-    const assignedProjectIds = assignedProjects.map(assignment => assignment.project_id);
-    const { data: projectDetails, error: detailsError } = await supabase
-      .from('projects')
-      .select('*')
-      .in('id', assignedProjectIds)
-      .order('start', { ascending: true });
-    
-    if (detailsError) throw new Error(detailsError.message);
-    
-    return projectDetails;
-  }
+  console.log('allProjects query result:', { data: allProjects, error: projectsError });
   
-  return [];
+  if (projectsError) throw new Error(projectsError.message);
+  
+  return allProjects || [];
 }
 
 async function getProjectAssignees(projectId) {
