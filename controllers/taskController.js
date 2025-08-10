@@ -77,7 +77,7 @@ async function getTasksByProjectWithAssigneesController(req, res) {
 
 async function createTask(req, res) {
   console.log('Reçu pour création de tâche :', req.body);
-  const { title, status, deadline, priority, project_id, user_ids, group_ids, description } = req.body;
+  const { title, status, deadline, priority, project_id, user_ids, group_ids, description, files } = req.body;
   if (!title) {
     console.log('Erreur : title manquant');
     return res.status(400).json({ message: 'Title is required.' });
@@ -95,7 +95,9 @@ async function createTask(req, res) {
       status: status || 'to do', 
       deadline, 
       priority: priority || 'medium', 
-      project_id 
+      project_id,
+      created_by: req.user?.id || null,
+      files: Array.isArray(files) ? files : []
     }, user_ids || [], group_ids || []);
     console.log('Tâche créée avec succès :', newTask);
     // Notifications
@@ -149,6 +151,7 @@ async function updateTask(req, res) {
     }
     res.json(updated);
   } catch (err) {
+    console.error('[updateTask] error details:', { err, body: req.body });
     res.status(500).json({ message: err.message || 'Failed to update task' });
   }
 }
@@ -186,3 +189,99 @@ module.exports = {
   deleteTask, 
   getTasksByProjectAndUserController 
 }; 
+
+// --- Files Endpoints ---
+async function getTaskFiles(req, res) {
+  try {
+    const { id } = req.params;
+    console.log('[getTaskFiles] Request for task:', id, 'by user:', req.user?.id, 'role:', req.user?.role);
+    const { data, error } = await supabase.from('tasks').select('files').eq('id', id).single();
+    if (error) {
+      console.log('[getTaskFiles] Database error:', error);
+      return res.status(500).json({ message: error.message });
+    }
+    console.log('[getTaskFiles] Raw files from DB:', data?.files);
+    
+    const files = data?.files || [];
+    
+    // Generate signed URLs for each file
+    const filesWithUrls = await Promise.all(
+      files.map(async (file) => {
+        if (file.path) {
+          try {
+            const { data: signedData } = await supabase.storage
+              .from('filesmanagment')
+              .createSignedUrl(file.path, 60 * 60 * 24 * 7); // 7 days
+            
+            return {
+              ...file,
+              url: signedData?.signedUrl || file.url || ''
+            };
+          } catch (e) {
+            console.log('[getTaskFiles] Error creating signed URL for', file.path, ':', e);
+            return file;
+          }
+        }
+        return file;
+      })
+    );
+    
+    console.log('[getTaskFiles] Files with URLs:', filesWithUrls);
+    res.json(filesWithUrls);
+  } catch (err) {
+    console.error('[getTaskFiles] Unexpected error:', err);
+    res.status(500).json({ message: err.message || 'Failed to fetch task files' });
+  }
+}
+
+async function addTaskFiles(req, res) {
+  try {
+    const { id } = req.params;
+    const incoming = Array.isArray(req.body?.files) ? req.body.files : [];
+    console.log('[addTaskFiles] Incoming files for task', id, 'count:', incoming.length);
+    const { data: task, error: ferr } = await supabase.from('tasks').select('files').eq('id', id).single();
+    if (ferr) return res.status(500).json({ message: ferr.message });
+    const existing = Array.isArray(task?.files) ? task.files : [];
+    console.log('[addTaskFiles] Existing files count:', existing.length);
+    // Merge by unique path
+    const byPath = new Map((existing || []).map(f => [f.path, f]));
+    for (const f of incoming) {
+      if (f && f.path) byPath.set(f.path, f);
+    }
+    const updated = Array.from(byPath.values());
+    const { data, error } = await supabase.from('tasks').update({ files: updated }).eq('id', id).select('files').single();
+    if (error) return res.status(500).json({ message: error.message });
+    console.log('[addTaskFiles] Updated files count:', (data?.files || []).length);
+    res.json(data.files || []);
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to add task files' });
+  }
+}
+
+async function deleteTaskFile(req, res) {
+  try {
+    const { id } = req.params;
+    const { path } = req.body || {};
+    if (!path) return res.status(400).json({ message: 'path is required' });
+
+    // Remove from storage first (best-effort)
+    try {
+      await supabase.storage.from('filesmanagment').remove([path]);
+    } catch (_) {}
+
+    // Remove from DB array
+    const { data: task, error: ferr } = await supabase.from('tasks').select('files').eq('id', id).single();
+    if (ferr) return res.status(500).json({ message: ferr.message });
+    const existing = Array.isArray(task?.files) ? task.files : [];
+    const updated = existing.filter(f => f?.path !== path);
+    const { data, error } = await supabase.from('tasks').update({ files: updated }).eq('id', id).select('files').single();
+    if (error) return res.status(500).json({ message: error.message });
+    res.json(data.files || []);
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to delete task file' });
+  }
+}
+
+module.exports.getTaskFiles = getTaskFiles;
+module.exports.addTaskFiles = addTaskFiles;
+module.exports.deleteTaskFile = deleteTaskFile;

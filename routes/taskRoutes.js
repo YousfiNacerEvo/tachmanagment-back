@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { getTasks, getStandaloneTasksController, getProjectTasksController, getUserTasksController, getAllUserTasksController, getTasksByProject, createTask, updateTask, deleteTask, getTasksByProjectAndUserController, getTasksByProjectWithAssigneesController } = require('../controllers/taskController');
-const { authenticateUser } = require('../middleware/auth');
+const { getTasks, getStandaloneTasksController, getProjectTasksController, getUserTasksController, getAllUserTasksController, getTasksByProject, createTask, updateTask, deleteTask, getTasksByProjectAndUserController, getTasksByProjectWithAssigneesController, getTaskFiles, addTaskFiles, deleteTaskFile } = require('../controllers/taskController');
+const { authenticateUser, canViewTask, canModifyTask } = require('../middleware/auth');
 
 // Apply authentication middleware to all routes
 router.use(authenticateUser);
@@ -19,5 +19,10 @@ router.get('/project/:projectId/user/:userId', getTasksByProjectAndUserControlle
 router.post('/', createTask);
 router.patch('/:id', updateTask);
 router.delete('/:id', deleteTask);
+
+// Files
+router.get('/:id/files', canViewTask, getTaskFiles);
+router.post('/:id/files', canModifyTask, addTaskFiles);
+router.delete('/:id/files', canModifyTask, deleteTaskFile);
 
 module.exports = router; 

@@ -402,12 +402,21 @@ async function addTask(task, user_ids = [], group_ids = []) {
 
 // Mise à jour d'une tâche avec synchronisation des assignations
 async function updateTask(id, updates, user_ids = [], group_ids = []) {
-  console.log('[updateTask] id:', id);
-  console.log('[updateTask] updates (raw):', updates);
-  console.log(' SUIII[updateTask] user_ids reçus:', user_ids);
-  console.log(' SUIII[updateTask] group_ids reçus:', group_ids);
+ 
   // Nettoyer les données pour ne garder que les colonnes qui existent dans la table tasks
-  const { user_ids: ignore1, group_ids: ignore2, assignees: ignore3, groups: ignore4, ...taskData } = updates;
+  // Remove non-column fields before updating DB
+  const {
+    user_ids: ignore1,
+    group_ids: ignore2,
+    assignees: ignore3,
+    groups: ignore4,
+    id: ignore5,
+    files: ignore6, // file updates go through dedicated endpoints
+    project_name: ignore7,
+    is_group_task: ignore8,
+    // progress: ignore9,
+    ...taskData
+  } = updates;
   console.log('[updateTask] updates (cleaned):', taskData);
 
   const { data, error } = await supabase
