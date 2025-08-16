@@ -105,3 +105,32 @@ async function deleteUser(req, res) {
 }
 
 module.exports = { createUser, getUserById, getAllUsers, deleteUser }; 
+
+// PATCH /api/users/:id
+async function updateUserRole(req, res) {
+  try {
+    const { id } = req.params;
+    const { role } = req.body || {};
+    if (!id) {
+      return res.status(400).json({ message: 'User id is required.' });
+    }
+    const validRoles = ['admin', 'member', 'guest'];
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ message: 'Invalid role. Must be one of: admin, member, guest.' });
+    }
+    const { data, error } = await supabase
+      .from('users')
+      .update({ role })
+      .eq('id', id)
+      .select('id, email, role')
+      .single();
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(200).json(data);
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+}
+
+module.exports.updateUserRole = updateUserRole;
