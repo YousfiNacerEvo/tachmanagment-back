@@ -63,6 +63,63 @@ async function updateProjectById(id, updates, user_ids) {
 }
 
 async function deleteProjectById(id) {
+  // Collect related tasks and files first
+  let taskRows = [];
+  let projectRow = null;
+  try {
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('id, files')
+      .eq('project_id', id);
+    taskRows = Array.isArray(tasks) ? tasks : [];
+  } catch (_) {}
+
+  try {
+    const { data: proj } = await supabase
+      .from('projects')
+      .select('files')
+      .eq('id', id)
+      .single();
+    projectRow = proj || null;
+  } catch (_) {}
+
+  // Best-effort: remove storage files for project and its tasks
+  try {
+    const pathsToRemove = [];
+    const projectFiles = Array.isArray(projectRow?.files) ? projectRow.files : [];
+    for (const f of projectFiles) {
+      if (f && f.path) pathsToRemove.push(f.path);
+    }
+    for (const t of taskRows) {
+      const taskFiles = Array.isArray(t?.files) ? t.files : [];
+      for (const f of taskFiles) {
+        if (f && f.path) pathsToRemove.push(f.path);
+      }
+    }
+    if (pathsToRemove.length > 0) {
+      await supabase.storage.from('filesmanagment').remove(pathsToRemove);
+    }
+  } catch (_) {}
+
+  // Delete task-related relations and tasks
+  const taskIds = taskRows.map(t => t.id).filter(Boolean);
+  try {
+    if (taskIds.length > 0) {
+      await supabase.from('task_assignees').delete().in('task_id', taskIds);
+      await supabase.from('group_task_assignments').delete().in('task_id', taskIds);
+    }
+  } catch (_) {}
+  try {
+    await supabase.from('tasks').delete().eq('project_id', id);
+  } catch (e) {
+    throw new Error(e.message);
+  }
+
+  // Delete project-related relations
+  try { await supabase.from('project_assignees').delete().eq('project_id', id); } catch (_) {}
+  try { await supabase.from('group_project_assignments').delete().eq('project_id', id); } catch (_) {}
+
+  // Finally delete the project
   const { error } = await supabase.from('projects').delete().eq('id', id);
   if (error) throw new Error(error.message);
   return true;

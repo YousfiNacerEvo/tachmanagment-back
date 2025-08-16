@@ -149,15 +149,16 @@ async function getProjectFiles(req, res) {
 async function addProjectFiles(req, res) {
   try {
     const { id } = req.params;
+    const projectId = isNaN(Number(id)) ? id : Number(id);
     const incoming = Array.isArray(req.body?.files) ? req.body.files : [];
-    const { data: proj, error: ferr } = await supabase.from('projects').select('files').eq('id', id).single();
+    const { data: proj, error: ferr } = await supabase.from('projects').select('files').eq('id', projectId).single();
     if (ferr) return res.status(500).json({ message: ferr.message });
     const existing = Array.isArray(proj?.files) ? proj.files : [];
     // Merge by unique path
     const byPath = new Map((existing || []).map(f => [f.path, f]));
     for (const f of incoming) { if (f && f.path) byPath.set(f.path, f); }
     const updated = Array.from(byPath.values());
-    const { data, error } = await supabase.from('projects').update({ files: updated }).eq('id', id).select('files').single();
+    const { data, error } = await supabase.from('projects').update({ files: updated }).eq('id', projectId).select('files').single();
     if (error) return res.status(500).json({ message: error.message });
     res.json(data.files || []);
   } catch (err) {
@@ -168,6 +169,7 @@ async function addProjectFiles(req, res) {
 async function deleteProjectFile(req, res) {
   try {
     const { id } = req.params;
+    const projectId = isNaN(Number(id)) ? id : Number(id);
     const { path } = req.body || {};
     if (!path) return res.status(400).json({ message: 'path is required' });
 
@@ -177,11 +179,11 @@ async function deleteProjectFile(req, res) {
     } catch (_) {}
 
     // Remove from DB array
-    const { data: proj, error: ferr } = await supabase.from('projects').select('files').eq('id', id).single();
+    const { data: proj, error: ferr } = await supabase.from('projects').select('files').eq('id', projectId).single();
     if (ferr) return res.status(500).json({ message: ferr.message });
     const existing = Array.isArray(proj?.files) ? proj.files : [];
     const updated = existing.filter(f => f?.path !== path);
-    const { data, error } = await supabase.from('projects').update({ files: updated }).eq('id', id).select('files').single();
+    const { data, error } = await supabase.from('projects').update({ files: updated }).eq('id', projectId).select('files').single();
     if (error) return res.status(500).json({ message: error.message });
     res.json(data.files || []);
   } catch (err) {

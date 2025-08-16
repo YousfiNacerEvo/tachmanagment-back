@@ -460,6 +460,29 @@ async function updateTask(id, updates, user_ids = [], group_ids = []) {
 }
 
 async function deleteTask(id) {
+  // Load task files
+  let fileRows = [];
+  try {
+    const { data } = await supabase.from('tasks').select('files').eq('id', id).single();
+    fileRows = Array.isArray(data?.files) ? data.files : [];
+  } catch (_) {}
+
+  // Best-effort: remove storage files
+  try {
+    const paths = [];
+    for (const f of fileRows) {
+      if (f && f.path) paths.push(f.path);
+    }
+    if (paths.length > 0) {
+      await supabase.storage.from('filesmanagment').remove(paths);
+    }
+  } catch (_) {}
+
+  // Delete relations
+  try { await supabase.from('task_assignees').delete().eq('task_id', id); } catch (_) {}
+  try { await supabase.from('group_task_assignments').delete().eq('task_id', id); } catch (_) {}
+
+  // Delete task record
   const { error } = await supabase.from('tasks').delete().eq('id', id);
   if (error) throw new Error(error.message);
   return true;
