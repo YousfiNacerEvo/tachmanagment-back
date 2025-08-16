@@ -104,8 +104,6 @@ async function deleteUser(req, res) {
   }
 }
 
-module.exports = { createUser, getUserById, getAllUsers, deleteUser }; 
-
 // PATCH /api/users/:id
 async function updateUserRole(req, res) {
   try {
@@ -133,4 +131,44 @@ async function updateUserRole(req, res) {
   }
 }
 
-module.exports.updateUserRole = updateUserRole;
+// GET /api/users/me - Get current user profile
+async function getMyProfile(req, res) {
+  try {
+    console.log('🔍 getMyProfile called');
+    const userId = req.user.id;
+    console.log('userId:', userId);
+    if (!userId) {
+      console.log('❌ No userId found');
+      return res.status(400).json({ message: 'User not authenticated.' });
+    }
+    console.log('✅ UserId found, making database query...');
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('id', userId)
+      .single();
+    
+    console.log('Database result:', { data, error });
+      
+    if (error || !data) {
+      console.log('❌ Database error or no data:', error);
+      return res.status(404).json({ message: error?.message || 'User profile not found.' });
+    }
+    
+    console.log('✅ Success, returning user data');
+    return res.status(200).json(data);
+  } catch (err) {
+    console.error('❌ Exception in getMyProfile:', err);
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+}
+
+module.exports = { 
+  createUser, 
+  getUserById, 
+  getAllUsers, 
+  deleteUser, 
+  updateUserRole,
+  getMyProfile
+};
