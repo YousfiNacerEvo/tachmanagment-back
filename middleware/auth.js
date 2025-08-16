@@ -278,7 +278,8 @@ module.exports = {
   authenticateUser,
   requireAdmin,
   canModifyTask,
-  canViewTask
+  canViewTask,
+  canAccessProject
 };
 
 // --- Project access middleware ---
@@ -321,5 +322,3 @@ async function canAccessProject(req, res, next) {
     res.status(500).json({ message: 'Failed to verify project access' });
   }
 }
-
-module.exports.canAccessProject = canAccessProject;

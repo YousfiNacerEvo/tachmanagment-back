@@ -114,7 +114,63 @@ async function getProjectsByUserController(req, res) {
   }
 }
 
-module.exports = { getProjects, createProject, updateProject, deleteProject, getProjectsByUserController, notifyProject };
+// GET /api/projects/:id/details
+async function getProjectDetails(req, res) {
+  try {
+    const { id } = req.params;
+    const projectId = isNaN(Number(id)) ? id : Number(id);
+    
+    // Récupérer les détails du projet
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+    
+    if (projectError) {
+      return res.status(500).json({ message: projectError.message });
+    }
+    
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+    
+    // Récupérer les tâches du projet
+    const { data: tasks, error: tasksError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('project_id', projectId);
+    
+    if (tasksError) {
+      console.error('Error fetching project tasks:', tasksError);
+      // On continue même si on ne peut pas récupérer les tâches
+    }
+    
+    // Récupérer les fichiers du projet
+    const { data: files, error: filesError } = await supabase
+      .from('projects')
+      .select('files')
+      .eq('id', projectId)
+      .single();
+    
+    if (filesError) {
+      console.error('Error fetching project files:', filesError);
+    }
+    
+    const projectDetails = {
+      ...project,
+      tasks: tasks || [],
+      files: files?.files || []
+    };
+    
+    res.json(projectDetails);
+  } catch (err) {
+    console.error('Error in getProjectDetails:', err);
+    res.status(500).json({ message: err.message || 'Failed to fetch project details' });
+  }
+}
+
+module.exports = { getProjects, createProject, updateProject, deleteProject, getProjectsByUserController, getProjectDetails, notifyProject };
 
 // --- Files Endpoints ---
 async function getProjectFiles(req, res) {
