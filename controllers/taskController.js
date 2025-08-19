@@ -77,7 +77,7 @@ async function getTasksByProjectWithAssigneesController(req, res) {
 
 async function createTask(req, res) {
   console.log('Reçu pour création de tâche :', req.body);
-  const { title, status, deadline, priority, project_id, user_ids, group_ids, description, files } = req.body;
+  const { title, status, deadline, priority, project_id, user_ids, group_ids, description, files, progress } = req.body;
   if (!title) {
     console.log('Erreur : title manquant');
     return res.status(400).json({ message: 'Title is required.' });
@@ -95,6 +95,8 @@ async function createTask(req, res) {
       status: status || 'to do', 
       deadline, 
       priority: priority || 'medium', 
+      // Ensure progress is persisted at creation; default to 0 when not provided
+      progress: (typeof progress === 'number' && isFinite(progress)) ? progress : 0,
       project_id,
       created_by: req.user?.id || null,
       files: Array.isArray(files) ? files : []
