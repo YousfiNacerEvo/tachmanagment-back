@@ -42,15 +42,45 @@ async function updateProjectById(id, updates, user_ids) {
   // Update assignees if provided
   if (user_ids !== undefined) {
     console.log('[updateProjectById] Incoming user_ids:', user_ids);
-    // Remove all previous assignees
-    await supabase.from('project_assignees').delete().eq('project_id', id);
-    // Insert new assignees (UUID only)
-    if (user_ids.length > 0) {
-      const validUserIds = user_ids.filter(isUUID);
-      console.log('[updateProjectById] Filtered validUserIds:', validUserIds);
-      const assignees = validUserIds.map(user_id => ({ project_id: id, user_id }));
-      console.log('[updateProjectById] Assignees to insert:', assignees);
-      const { data: assigneeData, error: assigneeError } = await supabase.from('project_assignees').insert(assignees);
+    const validUniqueUserIds = Array.from(new Set((user_ids || []).filter(isUUID)));
+    console.log('[updateProjectById] Filtered unique valid user IDs:', validUniqueUserIds);
+
+    // Read existing assignees
+    const { data: existingRows, error: readErr } = await supabase
+      .from('project_assignees')
+      .select('user_id')
+      .eq('project_id', id);
+    if (readErr) {
+      console.error('[updateProjectById] Error reading existing assignees:', readErr);
+      throw new Error(readErr.message);
+    }
+    const existingIds = (existingRows || []).map(r => r.user_id);
+    const existingSet = new Set(existingIds);
+
+    // Compute diff
+    const toDelete = existingIds.filter(uid => !validUniqueUserIds.includes(uid));
+    const toInsert = validUniqueUserIds.filter(uid => !existingSet.has(uid));
+    console.log('[updateProjectById] toDelete:', toDelete, 'toInsert:', toInsert);
+
+    // Delete removed assignees
+    if (toDelete.length > 0) {
+      const { error: delErr } = await supabase
+        .from('project_assignees')
+        .delete()
+        .eq('project_id', id)
+        .in('user_id', toDelete);
+      if (delErr) {
+        console.error('[updateProjectById] Error deleting removed assignees:', delErr);
+        throw new Error(delErr.message);
+      }
+    }
+
+    // Insert new assignees (ignore duplicates by only inserting diffs)
+    if (toInsert.length > 0) {
+      const assignees = toInsert.map(user_id => ({ project_id: id, user_id }));
+      const { data: assigneeData, error: assigneeError } = await supabase
+        .from('project_assignees')
+        .insert(assignees);
       console.log('[updateProjectById] assignee insert result:', { assigneeData, assigneeError });
       if (assigneeError) {
         console.error('[updateProjectById] Error inserting assignees:', assigneeError);

@@ -12,7 +12,7 @@ async function getProjects(req, res) {
 }
 
 async function createProject(req, res) {
-  const { title, description, status, start, end, user_id, user_ids, files } = req.body;
+  const { title, description, status, start, end, progress, user_id, user_ids, files } = req.body;
   if (!title || !description || !status || !start || !end) {
     return res.status(400).json({ message: 'All fields are required.' });
   }
@@ -20,7 +20,8 @@ async function createProject(req, res) {
     return res.status(400).json({ message: 'End date cannot be before start date.' });
   }
   try {
-    const newProject = await addProject({ title, description, status, start, end, files: Array.isArray(files) ? files : [] }, user_ids || []);
+    const normalizedProgress = Number.isFinite(Number(progress)) ? Number(progress) : 0;
+    const newProject = await addProject({ title, description, status, start, end, progress: normalizedProgress, files: Array.isArray(files) ? files : [] }, user_ids || []);
     // Set creator synchronously so access checks work immediately
     try {
       if (req.user?.id) {
@@ -176,10 +177,15 @@ module.exports = { getProjects, createProject, updateProject, deleteProject, get
 async function getProjectFiles(req, res) {
   try {
     const { id } = req.params;
+    console.log('[getProjectFiles] Request for project:', id, 'by user:', req.user?.id, 'role:', req.user?.role);
     const { data, error } = await supabase.from('projects').select('files').eq('id', id).single();
-    if (error) return res.status(500).json({ message: error.message });
+    if (error) {
+      console.log('[getProjectFiles] Database error:', error);
+      return res.status(500).json({ message: error.message });
+    }
 
     const files = Array.isArray(data?.files) ? data.files : [];
+    console.log('[getProjectFiles] Raw files from DB:', files);
     // Generate signed URLs for display/preview consistency
     const filesWithUrls = await Promise.all(
       files.map(async (file) => {
@@ -196,6 +202,7 @@ async function getProjectFiles(req, res) {
         return file;
       })
     );
+    console.log('[getProjectFiles] Files with URLs:', filesWithUrls);
     res.json(filesWithUrls);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch project files' });
@@ -207,15 +214,31 @@ async function addProjectFiles(req, res) {
     const { id } = req.params;
     const projectId = isNaN(Number(id)) ? id : Number(id);
     const incoming = Array.isArray(req.body?.files) ? req.body.files : [];
+    console.log('[addProjectFiles] Incoming files for project', projectId, 'raw:', JSON.stringify(incoming));
+    const sanitized = incoming
+      .filter(f => f && typeof f === 'object')
+      .map(f => ({
+        name: typeof f.name === 'string' ? f.name : '',
+        path: typeof f.path === 'string' ? f.path : '',
+        url: typeof f.url === 'string' ? f.url : '',
+        size: typeof f.size === 'number' ? f.size : null,
+        type: typeof f.type === 'string' ? f.type : '',
+        uploaded_at: typeof f.uploaded_at === 'string' ? f.uploaded_at : new Date().toISOString(),
+      }))
+      .filter(f => f.path);
+    console.log('[addProjectFiles] Sanitized:', JSON.stringify(sanitized));
     const { data: proj, error: ferr } = await supabase.from('projects').select('files').eq('id', projectId).single();
     if (ferr) return res.status(500).json({ message: ferr.message });
     const existing = Array.isArray(proj?.files) ? proj.files : [];
+    console.log('[addProjectFiles] Existing files:', JSON.stringify(existing));
     // Merge by unique path
     const byPath = new Map((existing || []).map(f => [f.path, f]));
-    for (const f of incoming) { if (f && f.path) byPath.set(f.path, f); }
+    for (const f of sanitized) { if (f && f.path) byPath.set(f.path, f); }
     const updated = Array.from(byPath.values());
+    console.log('[addProjectFiles] Updating DB with files:', JSON.stringify(updated));
     const { data, error } = await supabase.from('projects').update({ files: updated }).eq('id', projectId).select('files').single();
     if (error) return res.status(500).json({ message: error.message });
+    console.log('[addProjectFiles] Updated files row:', JSON.stringify(data?.files || []));
     res.json(data.files || []);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to add project files' });
