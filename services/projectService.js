@@ -195,6 +195,66 @@ async function getAllProjectsWithAssignees() {
   return projectsWithAssignees;
 }
 
+// Fonction pour mettre à jour automatiquement le statut des projets en retard
+async function updateOverdueProjects() {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+    
+    // Récupérer tous les projets qui ne sont pas terminés et dont la deadline est dépassée
+    const { data: overdueProjects, error } = await supabase
+      .from('projects')
+      .select('id, status, end')
+      .neq('status', 'done')
+      .lt('end', today.toISOString());
+    
+    if (error) throw new Error(error.message);
+    
+    // Mettre à jour le statut de ces projets à "overdue"
+    if (overdueProjects && overdueProjects.length > 0) {
+      const projectIds = overdueProjects.map(p => p.id);
+      const { error: updateError } = await supabase
+        .from('projects')
+        .update({ status: 'overdue' })
+        .in('id', projectIds);
+      
+      if (updateError) throw new Error(updateError.message);
+      
+      console.log(`Updated ${overdueProjects.length} projects to overdue status`);
+      return overdueProjects.length;
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error('Error updating overdue projects:', error);
+    throw error;
+  }
+}
+
+// Fonction pour obtenir le statut réel d'un projet (incluant overdue)
+function getProjectRealStatus(project) {
+  if (project.status === 'done') return 'done';
+  
+  // Vérifier si le projet est en retard
+  if (project.end) {
+    const endDate = new Date(project.end);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (endDate < today) return 'overdue';
+  }
+  
+  return project.status;
+}
+
+// Fonction pour enrichir les projets avec leur statut réel
+async function enrichProjectsWithRealStatus(projects) {
+  return projects.map(project => ({
+    ...project,
+    realStatus: getProjectRealStatus(project)
+  }));
+}
+
 module.exports = { 
   getAllProjects, 
   getAllProjectsWithAssignees,
@@ -202,5 +262,8 @@ module.exports = {
   updateProjectById, 
   deleteProjectById, 
   getProjectsByUser,
-  getProjectAssignees
+  getProjectAssignees,
+  updateOverdueProjects,
+  getProjectRealStatus,
+  enrichProjectsWithRealStatus
 }; 

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getProjects, createProject, updateProject, deleteProject, getProjectsByUserController, getProjectFiles, addProjectFiles, deleteProjectFile, notifyProject, getProjectDetails } = require('../controllers/projectController');
+const { getProjects, createProject, updateProject, deleteProject, getProjectsByUserController, getProjectFiles, addProjectFiles, deleteProjectFile, notifyProject, getProjectDetails, updateOverdueProjectsEndpoint } = require('../controllers/projectController');
 const { authenticateUser, requireAdmin, canAccessProject } = require('../middleware/auth');
 
 // Apply authentication middleware to all routes
@@ -13,6 +13,7 @@ router.post('/', requireAdmin, createProject);
 router.post('/:id/notify', requireAdmin, notifyProject);
 router.patch('/:id', requireAdmin, updateProject);
 router.delete('/:id', requireAdmin, deleteProject);
+router.post('/update-overdue', requireAdmin, updateOverdueProjectsEndpoint);
 
 // Files
 router.get('/:id/files', canAccessProject, getProjectFiles);

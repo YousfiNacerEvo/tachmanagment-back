@@ -62,7 +62,24 @@ function normalizeProjectStatus(statusRaw) {
   if (s === 'pending') return 'pending';
   if (s === 'in_progress' || s === 'in progress') return 'in_progress';
   if (s === 'done' || s === 'completed') return 'done';
+  if (s === 'overdue') return 'overdue';
   return 'unknown';
+}
+
+// Function to derive the real status of a project (including overdue)
+function deriveProjectStatus(project, today) {
+  if (project.status === 'done') return 'done';
+  
+  // Check if the project is overdue
+  if (project.end) {
+    const endDate = new Date(project.end);
+    const todayDate = new Date(today);
+    todayDate.setHours(0, 0, 0, 0); // Reset time to start of day
+    
+    if (endDate < todayDate) return 'overdue';
+  }
+  
+  return project.status;
 }
 
 function normalizeTaskStatus(statusRaw) {
@@ -89,7 +106,7 @@ function buildTimeSeriesByStatus(rows, { dateField, start, end, statuses, normal
      const key = `${yyyy}-${mm}`;
      const idx = indexByMonth.get(key);
      if (idx === undefined) continue;
-    const norm = derive ? derive(row) : normalize(row.status);
+    const norm = derive ? derive(row) : normalize(row);
      const dataset = datasets.find(ds => ds.status === norm);
      if (dataset) {
        dataset.counts[idx] += 1;
@@ -106,15 +123,32 @@ async function getProjectReportData(start, end) {
   const { data: projects, error } = await query;
   if (error) throw new Error(error.message);
 
-  const timeSeries = groupByDay(projects || [], 'start');
-  const byStatus = groupByStatus(projects || [], 'status');
-  const timeSeriesByStatus = buildTimeSeriesByStatus(projects || [], {
+  const today = toYmd(new Date());
+  
+  // Derive the real status of projects (including overdue)
+  const projectsWithRealStatus = (projects || []).map(project => ({
+    ...project,
+    realStatus: deriveProjectStatus(project, today)
+  }));
+
+  const timeSeries = groupByDay(projectsWithRealStatus || [], 'start');
+  
+  // Count by real status
+  const counts = new Map();
+  for (const project of projectsWithRealStatus || []) {
+    const st = project.realStatus;
+    counts.set(st, (counts.get(st) || 0) + 1);
+  }
+  const byStatus = Array.from(counts.entries()).map(([status, count]) => ({ status, count }));
+  
+  const timeSeriesByStatus = buildTimeSeriesByStatus(projectsWithRealStatus || [], {
     dateField: 'start',
     start,
     end,
-    statuses: ['pending', 'in_progress', 'done'],
-    normalize: normalizeProjectStatus,
+    statuses: ['pending', 'in_progress', 'done', 'overdue'],
+    normalize: (project) => project.realStatus,
   });
+  
   return { timeSeries, byStatus, timeSeriesByStatus };
 }
 

@@ -1,11 +1,19 @@
-const { getAllProjects, getAllProjectsWithAssignees, addProject, updateProjectById, deleteProjectById, getProjectsByUser, getProjectAssignees } = require('../services/projectService');
+const { getAllProjects, getAllProjectsWithAssignees, addProject, updateProjectById, deleteProjectById, getProjectsByUser, getProjectAssignees, updateOverdueProjects, enrichProjectsWithRealStatus } = require('../services/projectService');
 const { notifyAdminsOnCreation, notifyAssigneesOnAssignment } = require('../services/notificationService');
 const { supabase } = require('../services/supabaseClient');
 
 async function getProjects(req, res) {
   try {
+    // Mettre à jour automatiquement les projets en retard
+    await updateOverdueProjects();
+    
+    // Récupérer tous les projets avec leurs assignés
     const projects = await getAllProjectsWithAssignees();
-    res.json(projects);
+    
+    // Enrichir les projets avec leur statut réel
+    const enrichedProjects = await enrichProjectsWithRealStatus(projects);
+    
+    res.json(enrichedProjects);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch projects' });
   }
@@ -108,8 +116,16 @@ async function getProjectsByUserController(req, res) {
   try {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ message: 'User id is required.' });
+    
+    // Mettre à jour automatiquement les projets en retard
+    await updateOverdueProjects();
+    
     const projects = await getProjectsByUser(userId);
-    res.json(projects);
+    
+    // Enrichir les projets avec leur statut réel
+    const enrichedProjects = await enrichProjectsWithRealStatus(projects);
+    
+    res.json(enrichedProjects);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to fetch user projects' });
   }
@@ -171,7 +187,30 @@ async function getProjectDetails(req, res) {
   }
 }
 
-module.exports = { getProjects, createProject, updateProject, deleteProject, getProjectsByUserController, getProjectDetails, notifyProject };
+// POST /api/projects/update-overdue
+async function updateOverdueProjectsEndpoint(req, res) {
+  try {
+    const updatedCount = await updateOverdueProjects();
+    res.json({ 
+      success: true, 
+      message: `Updated ${updatedCount} projects to overdue status`,
+      updatedCount 
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to update overdue projects' });
+  }
+}
+
+module.exports = { 
+  getProjects, 
+  createProject, 
+  updateProject, 
+  deleteProject, 
+  getProjectsByUserController, 
+  getProjectDetails, 
+  notifyProject,
+  updateOverdueProjectsEndpoint
+};
 
 // --- Files Endpoints ---
 async function getProjectFiles(req, res) {
