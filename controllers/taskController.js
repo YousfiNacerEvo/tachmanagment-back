@@ -89,6 +89,19 @@ async function createTask(req, res) {
   }
   
   try {
+    // Never persist raw File-like payloads. Only accept objects with a path.
+    const safeFiles = Array.isArray(files)
+      ? files
+          .filter(f => f && typeof f === 'object' && typeof f.path === 'string' && f.path.length > 0)
+          .map(f => ({
+            name: typeof f.name === 'string' ? f.name : '',
+            path: f.path,
+            url: typeof f.url === 'string' ? f.url : '',
+            size: typeof f.size === 'number' ? f.size : null,
+            type: typeof f.type === 'string' ? f.type : '',
+            uploaded_at: typeof f.uploaded_at === 'string' ? f.uploaded_at : new Date().toISOString(),
+          }))
+      : [];
     const newTask = await addTask({ 
       title, 
       description: description || '', 
@@ -99,7 +112,7 @@ async function createTask(req, res) {
       progress: (typeof progress === 'number' && isFinite(progress)) ? progress : 0,
       project_id,
       created_by: req.user?.id || null,
-      files: Array.isArray(files) ? files : []
+      files: safeFiles
     }, user_ids || [], group_ids || []);
     console.log('Tâche créée avec succès :', newTask);
     // Notifications
@@ -240,20 +253,35 @@ async function addTaskFiles(req, res) {
   try {
     const { id } = req.params;
     const incoming = Array.isArray(req.body?.files) ? req.body.files : [];
-    console.log('[addTaskFiles] Incoming files for task', id, 'count:', incoming.length);
+    console.log('[addTaskFiles] Incoming files for task', id, 'raw:', JSON.stringify(incoming));
+
+    // Normalize and keep only allowed keys to avoid serialization issues
+    const sanitized = incoming
+      .filter(f => f && typeof f === 'object')
+      .map(f => ({
+        name: typeof f.name === 'string' ? f.name : '',
+        path: typeof f.path === 'string' ? f.path : '',
+        url: typeof f.url === 'string' ? f.url : '',
+        size: typeof f.size === 'number' ? f.size : null,
+        type: typeof f.type === 'string' ? f.type : '',
+        uploaded_at: typeof f.uploaded_at === 'string' ? f.uploaded_at : new Date().toISOString(),
+      }))
+      .filter(f => f.path); // require path as primary key
+    console.log('[addTaskFiles] Sanitized:', JSON.stringify(sanitized));
     const { data: task, error: ferr } = await supabase.from('tasks').select('files').eq('id', id).single();
     if (ferr) return res.status(500).json({ message: ferr.message });
     const existing = Array.isArray(task?.files) ? task.files : [];
-    console.log('[addTaskFiles] Existing files count:', existing.length);
+    console.log('[addTaskFiles] Existing files:', JSON.stringify(existing));
     // Merge by unique path
     const byPath = new Map((existing || []).map(f => [f.path, f]));
-    for (const f of incoming) {
+    for (const f of sanitized) {
       if (f && f.path) byPath.set(f.path, f);
     }
     const updated = Array.from(byPath.values());
+    console.log('[addTaskFiles] Updating DB with files:', JSON.stringify(updated));
     const { data, error } = await supabase.from('tasks').update({ files: updated }).eq('id', id).select('files').single();
     if (error) return res.status(500).json({ message: error.message });
-    console.log('[addTaskFiles] Updated files count:', (data?.files || []).length);
+    console.log('[addTaskFiles] Updated files row:', JSON.stringify(data?.files || []));
     res.json(data.files || []);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to add task files' });
