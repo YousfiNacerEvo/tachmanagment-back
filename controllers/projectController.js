@@ -4,8 +4,12 @@ const { supabase } = require('../services/supabaseClient');
 
 async function getProjects(req, res) {
   try {
-    // Mettre à jour automatiquement les projets en retard
-    await updateOverdueProjects();
+    // Mettre à jour automatiquement les projets en retard (best-effort)
+    try {
+      await updateOverdueProjects();
+    } catch (e) {
+      console.error('[getProjects] updateOverdueProjects failed:', e);
+    }
     
     // Récupérer tous les projets avec leurs assignés
     const projects = await getAllProjectsWithAssignees();
@@ -15,7 +19,9 @@ async function getProjects(req, res) {
     
     res.json(enrichedProjects);
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Failed to fetch projects' });
+    console.error('[getProjects] error:', err);
+    // Fallback to empty list instead of 500 to avoid breaking member UI
+    res.json([]);
   }
 }
 
@@ -117,17 +123,30 @@ async function getProjectsByUserController(req, res) {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ message: 'User id is required.' });
     
-    // Mettre à jour automatiquement les projets en retard
-    await updateOverdueProjects();
+    // Mettre à jour automatiquement les projets en retard (best-effort)
+    try {
+      await updateOverdueProjects();
+    } catch (e) {
+      console.error('[getProjectsByUserController] updateOverdueProjects failed:', e);
+      // Do not fail the endpoint if updater fails
+    }
     
-    const projects = await getProjectsByUser(userId);
+    let projects = [];
+    try {
+      projects = await getProjectsByUser(userId);
+    } catch (e) {
+      console.error('[getProjectsByUserController] getProjectsByUser failed:', e);
+      projects = [];
+    }
     
     // Enrichir les projets avec leur statut réel
     const enrichedProjects = await enrichProjectsWithRealStatus(projects);
     
     res.json(enrichedProjects);
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Failed to fetch user projects' });
+    console.error('[getProjectsByUserController] error:', err);
+    // Fallback to empty list instead of 500 to avoid breaking member UI
+    res.json([]);
   }
 }
 
