@@ -30,7 +30,7 @@ const authenticateUser = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Authentication error:', error);
-    res.status(500).json({ message: 'Authentication failed' });
+    res.status(401).json({ message: 'Authentication failed' });
   }
 };
 
@@ -290,6 +290,18 @@ async function canAccessProject(req, res, next) {
     const userRole = req.user.role;
 
     if (userRole === 'admin') return next();
+
+    // Allow project creator access
+    try {
+      const { data: projRow, error: projErr } = await supabase
+        .from('projects')
+        .select('created_by')
+        .eq('id', id)
+        .single();
+      if (!projErr && projRow && projRow.created_by === userId) {
+        return next();
+      }
+    } catch (_) {}
 
     // direct assignee?
     const { data: direct, error: derr } = await supabase

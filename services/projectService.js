@@ -157,18 +157,79 @@ async function deleteProjectById(id) {
 
 async function getProjectsByUser(userId) {
   console.log('getProjectsByUser called with userId:', userId);
-  
-  // Version de test : récupérer tous les projets
-  const { data: allProjects, error: projectsError } = await supabase
-    .from('projects')
-    .select('*')
-    .order('start', { ascending: true });
-  
-  console.log('allProjects query result:', { data: allProjects, error: projectsError });
-  
-  if (projectsError) throw new Error(projectsError.message);
-  
-  return allProjects || [];
+
+  // 1) Direct assignments
+  let directProjectIds = [];
+  try {
+    const { data: directRows, error: directErr } = await supabase
+      .from('project_assignees')
+      .select('project_id')
+      .eq('user_id', userId);
+    if (directErr) throw directErr;
+    directProjectIds = (directRows || []).map(r => r.project_id);
+  } catch (e) {
+    console.error('[getProjectsByUser] error fetching direct assignments:', e);
+  }
+
+  // 2) Via group membership
+  let viaGroupProjectIds = [];
+  try {
+    const { data: myGroups, error: groupErr } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', userId);
+    if (groupErr) throw groupErr;
+    const groupIds = (myGroups || []).map(g => g.group_id);
+    if (groupIds.length > 0) {
+      const { data: links, error: linkErr } = await supabase
+        .from('group_project_assignments')
+        .select('project_id')
+        .in('group_id', groupIds);
+      if (linkErr) throw linkErr;
+      viaGroupProjectIds = (links || []).map(l => l.project_id);
+    }
+  } catch (e) {
+    console.error('[getProjectsByUser] error fetching group-based assignments:', e);
+  }
+
+  // 3) Projects created by the user
+  let createdProjectIds = [];
+  try {
+    const { data: createdRows, error: createdErr } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('created_by', userId);
+    if (createdErr) throw createdErr;
+    createdProjectIds = (createdRows || []).map(r => r.id);
+  } catch (e) {
+    console.error('[getProjectsByUser] error fetching created projects:', e);
+  }
+
+  const uniqueProjectIds = Array.from(new Set([
+    ...directProjectIds,
+    ...viaGroupProjectIds,
+    ...createdProjectIds,
+  ]));
+
+  // Remove any null/undefined/empty ids to avoid DB errors
+  const cleanedIds = uniqueProjectIds.filter(id => id !== null && id !== undefined && id !== '');
+
+  if (cleanedIds.length === 0) {
+    return [];
+  }
+
+  try {
+    const { data: projects, error: projectsError } = await supabase
+      .from('projects')
+      .select('*')
+      .in('id', cleanedIds)
+      .order('start', { ascending: true });
+    if (projectsError) throw projectsError;
+    return projects || [];
+  } catch (e) {
+    console.error('[getProjectsByUser] error fetching projects by ids:', e, 'ids:', cleanedIds);
+    return [];
+  }
 }
 
 async function getProjectAssignees(projectId) {
