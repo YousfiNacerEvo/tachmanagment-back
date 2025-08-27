@@ -12,7 +12,7 @@ function normalizeStatusForOverdue(status) {
 
 function toYmd(dateLike) {
   const d = new Date(dateLike);
-  if (isNaN(d)) return null;
+  if (Number.isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 10);
 }
 
@@ -489,7 +489,12 @@ async function deleteTask(id) {
 }
 
 module.exports = { 
+  normalizeStatusForOverdue,
+  toYmd,
+  applyOverdueStatus,
+  normalizeIds,
   getAllTasks,
+  getGroupMemberUserIds,
   getAllTasksWithAssignees,
   getStandaloneTasks,
   getStandaloneTasksWithAssignees,
