@@ -44,10 +44,42 @@ function assignmentTemplate({ creatorName, itemType, itemName, href }) {
   return { subject: `[Assigned] ${itemType}: ${itemName}`, html: baseLayout({ title, body }) };
 }
 
+function welcomeTemplate({ userEmail, userRole, loginUrl }) {
+  const title = `Welcome to TachManager!`;
+  const roleDescription = {
+    admin: 'You have full access to all features including user management, project creation, and system administration.',
+    member: 'You can view and work on assigned projects and tasks.',
+    guest: 'You have limited access to view assigned projects and tasks.'
+  };
+  
+  const body = `
+    <p>Hello and welcome to <strong>TachManager</strong>!</p>
+    <p>Your account has been successfully created with the following details:</p>
+    <ul style="margin: 16px 0; padding-left: 20px;">
+      <li><strong>Email:</strong> ${userEmail}</li>
+      <li><strong>Role:</strong> ${userRole}</li>
+    </ul>
+    <p>${roleDescription[userRole] || roleDescription.member}</p>
+    <p>You can now log in to your account and start using the platform.</p>
+    <p style="margin: 24px 0;">
+      <a href="${loginUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+        Access Your Account
+      </a>
+    </p>
+    <p>If you have any questions or need assistance, please don't hesitate to contact your administrator.</p>
+    <p>Best regards,<br>The TachManager Team</p>
+  `;
+  return { 
+    subject: `Welcome to TachManager - Your Account is Ready!`, 
+    html: baseLayout({ title, body }) 
+  };
+}
+
 module.exports = {
   adminCreationTemplate,
   reminderTemplate,
   assignmentTemplate,
+  welcomeTemplate,
 };
 
 

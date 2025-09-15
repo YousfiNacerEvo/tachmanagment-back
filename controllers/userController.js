@@ -1,4 +1,6 @@
 const { supabase } = require('../services/supabaseClient');
+const { sendEmail } = require('../services/emailService');
+const { welcomeTemplate } = require('../services/emailTemplates');
 
 // POST /api/users
 async function createUser(req, res) {
@@ -38,6 +40,29 @@ async function createUser(req, res) {
       return res.status(400).json({ message: updateError.message });
     }
     console.log('[AddUser] User created and role updated successfully:', userId);
+    
+    // Send welcome email
+    try {
+      const loginUrl = process.env.FRONTEND_URL || 'http://localhost:3000/login';
+      const { subject, html } = welcomeTemplate({ 
+        userEmail: email, 
+        userRole: role, 
+        loginUrl 
+      });
+      
+      await sendEmail({
+        to: email,
+        subject,
+        html,
+        text: `Welcome to TachManager! Your account has been created with role: ${role}. You can now log in at ${loginUrl}`
+      });
+      
+      console.log('[AddUser] Welcome email sent successfully to:', email);
+    } catch (emailError) {
+      // Don't fail user creation if email fails
+      console.warn('[AddUser] Failed to send welcome email:', emailError.message);
+    }
+    
     return res.status(201).json({ message: 'User created successfully.', id: userId });
   } catch (err) {
     console.log('[AddUser] Exception:', err);

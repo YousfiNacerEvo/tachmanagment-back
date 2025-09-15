@@ -1,6 +1,7 @@
 const { getAllTasks, getTasksByProject: getTasksByProjectService, getTasksByProjectWithAssignees, addTask, updateTask: updateTaskService, deleteTask: deleteTaskService, getTasksByProjectAndUser, getStandaloneTasks, getStandaloneTasksWithAssignees, getProjectTasks, getProjectTasksWithAssignees, getTasksByUser, getAllTasksByUser, getTaskAssignees } = require('../services/taskService');
 const { notifyAdminsOnCreation, notifyAssigneesOnAssignment } = require('../services/notificationService');
 const { supabase } = require('../services/supabaseClient');
+const { checkAndUpdateTaskStatus, updateTaskStatusInDB } = require('../services/statusUpdateService');
 
 async function getTasks(req, res) {
   try {
@@ -151,6 +152,24 @@ async function updateTask(req, res) {
       } catch (_) {}
     }
     const updated = await updateTaskService(id, updates, user_ids || [], group_ids || []);
+
+    // Vérifier et mettre à jour le statut basé sur la nouvelle date d'échéance
+    if (updates.deadline) {
+      try {
+        const taskWithUpdatedStatus = checkAndUpdateTaskStatus(updated);
+        
+        // Si le statut a changé, le mettre à jour dans la base de données
+        if (taskWithUpdatedStatus.status !== updated.status) {
+          console.log(`[updateTask] Status changed from ${updated.status} to ${taskWithUpdatedStatus.status} for task ${id}`);
+          const statusUpdated = await updateTaskStatusInDB(id, taskWithUpdatedStatus.status);
+          updated.status = statusUpdated.status;
+        }
+      } catch (statusError) {
+        console.error('[updateTask] Error updating task status based on deadline:', statusError);
+        // Ne pas faire échouer la mise à jour de la tâche si la vérification du statut échoue
+      }
+    }
+
     if (Array.isArray(user_ids)) {
       const prevSet = new Set(previousAssignees || []);
       const newOnly = (user_ids || []).filter(uid => !prevSet.has(uid));
