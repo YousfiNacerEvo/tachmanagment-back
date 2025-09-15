@@ -1,6 +1,7 @@
 const { getAllProjects, getAllProjectsWithAssignees, addProject, updateProjectById, deleteProjectById, getProjectsByUser, getProjectAssignees, updateOverdueProjects, enrichProjectsWithRealStatus } = require('../services/projectService');
 const { notifyAdminsOnCreation, notifyAssigneesOnAssignment } = require('../services/notificationService');
 const { supabase } = require('../services/supabaseClient');
+const { checkAndUpdateProjectStatus, updateProjectStatusInDB } = require('../services/statusUpdateService');
 
 async function getProjects(req, res) {
   try {
@@ -83,6 +84,23 @@ async function updateProject(req, res) {
     }
 
     const updated = await updateProjectById(id, updates, user_ids);
+
+    // Vérifier et mettre à jour le statut basé sur la nouvelle date
+    if (updates.end || updates.start) {
+      try {
+        const projectWithUpdatedStatus = checkAndUpdateProjectStatus(updated);
+        
+        // Si le statut a changé, le mettre à jour dans la base de données
+        if (projectWithUpdatedStatus.status !== updated.status) {
+          console.log(`[updateProject] Status changed from ${updated.status} to ${projectWithUpdatedStatus.status} for project ${id}`);
+          const statusUpdated = await updateProjectStatusInDB(id, projectWithUpdatedStatus.status);
+          updated.status = statusUpdated.status;
+        }
+      } catch (statusError) {
+        console.error('[updateProject] Error updating project status based on date:', statusError);
+        // Ne pas faire échouer la mise à jour du projet si la vérification du statut échoue
+      }
+    }
 
     // Notify only users who are newly assigned
     if (Array.isArray(user_ids)) {
