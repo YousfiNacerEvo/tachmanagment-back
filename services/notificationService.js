@@ -37,8 +37,8 @@ function projectLink(projectId) {
 }
 
 function taskLink(taskId) {
-  // tasks page supports ?taskId= to open edit modal
-  return `${frontendBase()}/dashboard/tasks?taskId=${encodeURIComponent(taskId)}`;
+  // Use hash so My Work can parse it even without query
+  return `${frontendBase()}/dashboard/my-work#taskId=${encodeURIComponent(taskId)}`;
 }
 
 // Public API: call on creation events
