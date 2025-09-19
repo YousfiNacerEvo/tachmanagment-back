@@ -37,8 +37,8 @@ function projectLink(projectId) {
 }
 
 function taskLink(taskId) {
-  // Use hash so My Work can parse it even without query
-  return `${frontendBase()}/dashboard/my-work#taskId=${encodeURIComponent(taskId)}`;
+  // Universal link to Tasks page; frontend redirects non-admins to My Work
+  return `${frontendBase()}/dashboard/tasks?taskId=${encodeURIComponent(taskId)}`;
 }
 
 // Public API: call on creation events
