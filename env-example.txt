@@ -1,0 +1,12 @@
+# Copiez ce fichier vers .env et remplissez avec vos vraies valeurs
+
+# Configuration SendGrid
+SENDGRID_API_KEY=SG.your_actual_sendgrid_api_key_here
+SENDGRID_FROM_EMAIL=your_verified_sender_email@yourdomain.com
+
+# URL du frontend pour les liens de connexion
+FRONTEND_URL=http://localhost:3000
+
+# Configuration Supabase (si nécessaire)
+# SUPABASE_URL=your_supabase_url
+# SUPABASE_ANON_KEY=your_supabase_anon_key

@@ -1,76 +1,59 @@
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 
 // ENV expected:
-// SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
+// SENDGRID_API_KEY, SENDGRID_FROM_EMAIL
 
-function createTransport() {
-  const service = (process.env.SMTP_SERVICE || '').toLowerCase();
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const insecureTls = String(process.env.SMTP_TLS_INSECURE || '').toLowerCase() === '1' || String(process.env.SMTP_TLS_INSECURE || '').toLowerCase() === 'true';
-  const tls = insecureTls ? { rejectUnauthorized: false } : undefined;
-  if (service === 'gmail') {
-    if (!user || !pass) {
-      console.warn('[emailService] Gmail selected but SMTP_USER/SMTP_PASS missing');
-      return null;
-    }
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user, pass },
-      tls,
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 50,
-      socketTimeout: 20000,
-      connectionTimeout: 20000,
-    });
+// Initialize SendGrid
+function initializeSendGrid() {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+  
+  if (!apiKey || !fromEmail) {
+    console.warn('[emailService] SendGrid not configured; SENDGRID_API_KEY and SENDGRID_FROM_EMAIL required');
+    return false;
   }
-
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  if (!host || !user || !pass) {
-    console.warn('[emailService] SMTP not configured; emails will be no-op');
-    return null;
-  }
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    tls,
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 50,
-    socketTimeout: 20000,
-    connectionTimeout: 20000,
-  });
+  
+  sgMail.setApiKey(apiKey);
+  console.log('[emailService] SendGrid initialized successfully');
+  return true;
 }
 
-const transport = createTransport();
+const isSendGridConfigured = initializeSendGrid();
 
 async function sendEmail({ to, subject, text, html }) {
-  if (!transport) {
-    console.log('[emailService] Skipping email (transport not configured)', { to, subject });
+  if (!isSendGridConfigured) {
+    console.log('[emailService] Skipping email (SendGrid not configured)', { to, subject });
     return { skipped: true };
   }
-  const from = process.env.EMAIL_FROM || process.env.SMTP_USER;
+
+  const from = process.env.SENDGRID_FROM_EMAIL;
+  
+  // Handle multiple recipients (array of emails)
+  const recipients = Array.isArray(to) ? to : [to];
+  
   try {
-    return await transport.sendMail({ from, to, subject, text, html });
+    const msg = {
+      to: recipients,
+      from: from,
+      subject: subject,
+      text: text,
+      html: html,
+    };
+
+    const response = await sgMail.send(msg);
+    console.log('[emailService] Email sent successfully:', { to: recipients, subject, statusCode: response[0].statusCode });
+    return response;
   } catch (err) {
-    const code = (err && err.code) || '';
-    if (['ESOCKET', 'ETIMEDOUT', 'ECONNRESET'].includes(String(code))) {
-      try {
-        await new Promise(r => setTimeout(r, 500));
-        return await transport.sendMail({ from, to, subject, text, html });
-      } catch (e2) {
-        console.warn('[emailService] send retry failed:', e2?.message || e2);
-        return Promise.reject(e2);
-      }
+    console.error('[emailService] SendGrid error:', err);
+    
+    // Handle specific SendGrid errors
+    if (err.response) {
+      const { statusCode, body } = err.response;
+      console.error('[emailService] SendGrid API error:', { statusCode, body });
     }
+    
     return Promise.reject(err);
   }
 }
 
 module.exports = { sendEmail };
-
-
